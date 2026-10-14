@@ -1,20 +1,28 @@
-# 08 — Code Walkthrough: Understand the Main Files
+# 08 — Code Walkthrough: Files ko ek saath samjho
 
-This document explains the important lines and blocks in the actual MazeMind source code. Keep the matching Python file open in PyCharm while reading. The snippets below are shortened excerpts, not replacement files.
+Is guide ko PyCharm mein source files kholkar follow karo. Code snippets important blocks ke excerpts hain; full source of truth GitHub ki Python files hain. Snippets ko poori file ke replacement ke roop mein copy mat karna.
 
-## Before the code: data flow
+## Source code kahan milega?
+
+- [environment.py](../environment.py) — maze and rules.
+- [train.py](../train.py) — PPO training.
+- [evaluate.py](../evaluate.py) — comparison and metrics.
+- [visualize.py](../visualize.py) — plots.
+- [requirements.txt](../requirements.txt) — dependencies.
+
+## Overall code flow
 
 ```mermaid
 flowchart LR
-    A[environment.py<br/>Maze rules] --> B[train.py<br/>PPO learns]
+    A[environment.py] --> B[train.py]
     B --> C[mazemind_ppo.zip]
-    C --> D[evaluate.py<br/>PPO vs random]
+    C --> D[evaluate.py]
     D --> E[evaluation.npz]
-    E --> F[visualize.py<br/>charts]
+    E --> F[visualize.py]
     F --> G[evaluation.png]
 ```
 
-## 1. `environment.py` — define the world
+## 1. environment.py
 
 ### Imports
 
@@ -24,11 +32,9 @@ import numpy as np
 from gymnasium import spaces
 ```
 
-- `gymnasium` provides the standard interface an RL algorithm expects.
-- `numpy` stores the maze and creates numeric observations.
-- `spaces` describes which actions and observations are valid.
+Gymnasium standard environment interface deta hai. NumPy arrays aur numeric operations ke liye hai. `spaces` define karta hai ki actions aur observations ka format kya hai.
 
-### Class and settings
+### Environment class
 
 ```python
 class MazeEnv(gym.Env):
@@ -39,53 +45,13 @@ class MazeEnv(gym.Env):
         self.max_steps = max_steps
 ```
 
-- `class MazeEnv(gym.Env)`: defines our environment using Gymnasium's base interface.
-- `__init__`: runs when `MazeEnv()` is created.
-- `super().__init__()`: initializes the parent environment.
-- `self.rows`, `self.cols`: dimensions of the grid.
-- `self.max_steps`: maximum actions allowed in one attempt.
+Class environment ka blueprint hai. `__init__` initial settings assign karta hai. `self` current environment object ko refer karta hai. `super().__init__()` parent Gymnasium class ka initialization call karta hai.
 
-### Maze array
+### State fields and maze
 
-```python
-self.walls = np.array([
-    [0, 0, 1, 0, 0],
-    [1, 0, 1, 0, 1],
-    [0, 0, 0, 0, 0],
-    [0, 1, 1, 1, 0],
-    [1, 0, 0, 0, 0],
-], dtype=np.float32)
-```
+`self.walls` ek 5×5 array hai. `self.start=(0,0)` aur `self.goal=(4,4)`. `self.agent` current coordinate track karta hai. `self.steps` current episode mein kitne moves attempt hue, ye count karta hai.
 
-Each nested list is one row. A 1 blocks movement; a 0 is walkable. `dtype=np.float32` stores numbers in the type expected by the observation space.
-
-### Start, goal and action space
-
-```python
-self.start = (0, 0)
-self.goal = (4, 4)
-self.action_space = spaces.Discrete(4)
-```
-
-- A coordinate is `(row, column)`; Python indexes from zero.
-- `Discrete(4)` means actions are integers 0, 1, 2 or 3.
-- In this project: 0=up, 1=right, 2=down, 3=left.
-
-The `moves` dictionary translates an action into a row/column change. For example, action 1 maps to `(0, 1)`, so the row stays the same and column increases by one.
-
-### Observation space
-
-```python
-self.observation_space = spaces.Box(
-    low=0.0, high=1.0,
-    shape=(3 * self.rows * self.cols,),
-    dtype=np.float32,
-)
-```
-
-The observation is a vector of 75 values: 3 layers × 5 rows × 5 columns. `Box` declares the numeric range, shape and data type that the environment returns.
-
-### `_get_obs()`: convert the world into numbers
+### Observation creation
 
 ```python
 agent_layer = np.zeros_like(self.walls)
@@ -94,59 +60,62 @@ stacked = np.stack([self.walls, self.goal_layer, agent_layer])
 return stacked.flatten().astype(np.float32)
 ```
 
-1. Create a zero-filled 5×5 layer for the agent.
-2. Put a 1 at the agent's current coordinate.
-3. Stack wall, goal and agent layers into shape `(3, 5, 5)`.
-4. Flatten the layers into 75 values and ensure the type is `float32`.
+1. Agent ke liye blank 5×5 layer banao.
+2. Current cell par 1 rakho.
+3. Walls, goal aur agent layers stack karo.
+4. 75 values mein flatten karo.
+5. `float32` type ensure karo.
 
-### `reset()`: start an episode
+Why 75? `3 × 5 × 5 = 75`. Flat vector PPO ki MLP policy ke input ke liye hai.
+
+### reset()
+
+`reset()` agent ko start cell par rakhta hai, steps ko zero karta hai, aur initial observation ke saath empty info dictionary return karta hai. Har episode ki fresh start state milti hai.
+
+### step(action)
+
+Ye environment ka central function hai. Action number movement dictionary se delta leta hai; candidate coordinate calculate karta hai; bounds aur wall check karta hai; valid hone par move karta hai; reward assign karta hai; phir next observation, reward, terminated, truncated aur info return karta hai.
+
+Gymnasium ke five return values:
+
+| Value | Meaning |
+|---|---|
+| `observation` | Action ke baad environment ki current numeric information |
+| `reward` | Is step ka score/feedback |
+| `terminated` | Goal achieve hone se task end hua? |
+| `truncated` | Step limit ki wajah se episode end hua? |
+| `info` | Additional diagnostic info; is project mein empty dictionary |
+
+### render()
+
+Text maze display banata hai: A agent, G goal, # wall, . free cell. PPO text rendering read nahi karta; PPO numeric observation leta hai.
+
+## 2. train.py
+
+### Imports and paths
 
 ```python
-super().reset(seed=seed)
-self.agent = self.start
-self.steps = 0
-return self._get_obs(), {}
+from pathlib import Path
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.monitor import Monitor
+from environment import MazeEnv
 ```
 
-Reset returns the agent to the start, clears the step counter and returns the initial observation plus an empty information dictionary. Gymnasium expects the pair `(observation, info)`.
-
-### `step(action)`: apply one move
-
-The real function does this sequence:
-1. Find the movement delta for the chosen action.
-2. Calculate the proposed next row and column.
-3. Increase the step counter.
-4. Give the ordinary step penalty `-0.01`.
-5. Move only if the proposed cell is inside the grid and is not a wall.
-6. If the agent reaches the goal, give reward `+1.0`.
-7. Set `terminated=True` for goal reached.
-8. Set `truncated=True` if the 50-step limit is reached without success.
-9. Return the next observation, reward, both flags and info.
-
-Gymnasium's required return shape is:
-
-```python
-observation, reward, terminated, truncated, info
-```
-
-An invalid move leaves the agent in the same cell but still consumes a step.
-
-### `render()`
-
-This function creates a readable text view: A=agent, G=goal, #=wall and .=free cell. It is only a debugging display; PPO learns from the numeric observation, not from the letters in the printed maze.
-
-## 2. `train.py` — train and save PPO
-
-### Paths
+- `Path`: file paths construct karta hai.
+- `PPO`: ready-made algorithm.
+- `check_env`: environment API validate karta hai.
+- `Monitor`: episode statistics log karta hai.
+- `MazeEnv`: hamara custom environment.
 
 ```python
 OUTPUT_DIR = Path("outputs")
 MODEL_PATH = OUTPUT_DIR / "mazemind_ppo"
 ```
 
-`Path` builds file paths in a platform-friendly way. The model is saved as `outputs/mazemind_ppo.zip` by Stable-Baselines3.
+Output directory aur model save path define hote hain. Stable-Baselines3 file ko `mazemind_ppo.zip` ke roop mein save karta hai.
 
-### Validate and wrap the environment
+### Environment validation and monitoring
 
 ```python
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -154,11 +123,11 @@ check_env(MazeEnv())
 env = Monitor(MazeEnv(), filename=str(OUTPUT_DIR / "training_monitor.csv"))
 ```
 
-- `mkdir(exist_ok=True)` creates the output folder if needed.
-- `check_env` checks common Gymnasium API mistakes.
-- `Monitor` records episode statistics in a CSV file.
+- Folder missing ho to create karo.
+- Environment checker run karo.
+- Monitor wrapper se episode statistics CSV mein record karo.
 
-### Create the PPO model
+### PPO configuration
 
 ```python
 model = PPO(
@@ -172,90 +141,83 @@ model = PPO(
 )
 ```
 
-- `PPO`: algorithm implementation from Stable-Baselines3.
-- `MlpPolicy`: a fully connected neural network policy for the flat observation vector.
-- `learning_rate`: optimizer update size.
-- `n_steps`: environment steps collected before a training update.
-- `batch_size`: samples processed in a minibatch.
-- `gamma`: discount factor for future rewards.
-- `verbose=1`: show training logs.
-- `seed=42`: helps make the run repeatable; it does not guarantee identical results on every machine.
+`MlpPolicy` flat 75-value observation ko fully connected neural network se process karti hai. Learning rate update size, n_steps collected experience, batch size minibatch size, gamma future rewards ka discount, verbose logs, aur seed randomness control mein help karta hai. Ye parameters starting settings hain, guaranteed optimal nahi.
 
-### Learn and save
+### Train and save
 
 ```python
 model.learn(total_timesteps=20_000)
 model.save(str(MODEL_PATH))
 ```
 
-PPO interacts with the environment for a budget of 20,000 timesteps, updates its policy, and saves the model. A timestep is one call to the environment's `step()` during training. A saved file does not prove that the policy performs well; evaluation checks that.
+PPO 20,000 environment timesteps tak experience collect/update karta hai. Phir trained policy save hoti hai. Model file create hona success rate high hone ka proof nahi; evaluation next step hai.
 
-## 3. `evaluate.py` — compare PPO with random actions
+## 3. evaluate.py
 
-### One episode
+### Model load
 
 ```python
-observation, _ = env.reset()
-action = env.action_space.sample()
-observation, reward, terminated, truncated, _ = env.step(action)
+model = PPO.load(str(MODEL_PATH))
 ```
 
-- `reset()` starts a fresh attempt.
-- `action_space.sample()` selects a random valid action.
-- `step(action)` applies it and returns the next state and feedback.
-- The loop stops when the goal is reached or the step limit is hit.
+Previously saved policy ko load karta hai. Model path missing ho to script clear error deti hai; pehle training complete karo.
 
-When a PPO model is supplied, the action instead comes from:
+### Random vs PPO action
+
+Random baseline:
+
+```python
+action = env.action_space.sample()
+```
+
+Randomly one valid action select karta hai.
+
+PPO:
 
 ```python
 action, _ = model.predict(observation, deterministic=True)
 ```
 
-`deterministic=True` asks PPO to choose its deterministic prediction for evaluation. The second returned value is unused here, so it is stored in `_`.
+Trained model current observation se action predict karta hai. `deterministic=True` evaluation ke liye deterministic prediction request karta hai. `_` second return value ko ignore karne ka common Python convention hai.
+
+### Episode loop
+
+Har episode reset se start hota hai. Har action ke baad reward add hota hai. Goal reach ho ya max steps use ho jaayein to episode end hota hai. Script success flag, steps aur total reward record karti hai.
 
 ### Metrics
 
-- **Success rate:** number of successful episodes divided by number of episodes. For example, 15 successes out of 30 means 50%.
-- **Mean steps:** average number of actions per episode. Read this alongside success rate; failing quickly is not a good result.
-- **Mean reward:** average sum of rewards collected in an episode.
+```python
+success_rate = np.mean([item["success"] for item in results])
+mean_steps = np.mean([item["steps"] for item in results])
+mean_reward = np.mean([item["reward"] for item in results])
+```
 
-The script runs 30 random episodes and 30 PPO episodes. It saves the episode-level success and step arrays in `outputs/evaluation.npz`. Terminal metrics will vary; copy your actual output into any report.
+Success values 0/1 hoti hain, isliye unka mean success fraction hota hai. Example: 18 successes / 30 episodes = 0.6 = 60%. Mean steps aur mean reward average values hain.
 
-## 4. `visualize.py` — make charts
+`np.savez` random aur PPO episode-level arrays ko `evaluation.npz` mein store karta hai, jise next script read karegi.
+
+## 4. visualize.py
 
 ```python
 data = np.load(RESULTS_PATH)
+```
+
+Evaluation output file read hoti hai. Agar file missing ho, pehle `evaluate.py` run karo.
+
+```python
 success_rates = [
     np.mean(data["random_success"]),
     np.mean(data["ppo_success"]),
 ]
 ```
 
-- `np.load` reads the saved evaluation arrays.
-- `np.mean` calculates the average; for arrays of zeros and ones, the mean is the success fraction.
-- Matplotlib draws two bar charts: success rate and mean steps.
-- `fig.savefig(...)` saves the figure as `outputs/evaluation.png`.
-- `plt.show()` opens the chart window.
+Arrays ka mean nikalta hai. Matplotlib phir success rate aur mean steps ke bar charts draw karta hai. `fig.savefig(...)` image save karta hai; `plt.show()` display karne ki koshish karta hai.
 
-This script needs `evaluation.npz`, so run `evaluate.py` first.
+## 5. requirements.txt
 
-## 5. Full execution order
+Is file mein dependencies listed hain, jaise Gymnasium, Stable-Baselines3, NumPy aur Matplotlib. `python -m pip install -r requirements.txt` in packages ko selected Python environment mein install karta hai. Package versions supported range ke andar resolve hote hain; install issue aaye to Python version aur full error note karo.
 
-```mermaid
-flowchart TD
-    A[environment.py: maze rules] --> B[check_env validates API]
-    B --> C[train.py: PPO learns]
-    C --> D[mazemind_ppo.zip]
-    C --> E[training_monitor.csv]
-    D --> F[evaluate.py]
-    F --> G[evaluation.npz]
-    G --> H[visualize.py]
-    H --> I[evaluation.png]
-```
-
-## 6. Commands and expected files
-
-Run from the repository root:
+## 6. Run commands in order
 
 ```bash
 python -m pip install -r requirements.txt
@@ -265,31 +227,12 @@ python evaluate.py
 python visualize.py
 ```
 
-Expected artifacts after each stage:
+## 7. Common conceptual confusions
 
-| Stage | Expected artifact or message |
-|---|---|
-| Environment check | `Environment OK` |
-| Training | `outputs/mazemind_ppo.zip` and `outputs/training_monitor.csv` |
-| Evaluation | Metrics in terminal and `outputs/evaluation.npz` |
-| Visualization | `outputs/evaluation.png` |
+- **Environment is not the model:** environment world/rules define karta hai; PPO policy decisions learn karti hai.
+- **Training is not evaluation:** training policy update karti hai; evaluation performance measure karti hai.
+- **A chart is not the raw data:** `evaluation.npz` numeric results hai; `evaluation.png` visualization hai.
+- **Random baseline is not another trained model:** woh random valid actions leta hai.
+- **PPO maths is not hand-coded here:** Stable-Baselines3 implementation use hoti hai.
 
-These are expected paths, not guaranteed metrics. If a command raises an error, fix it before proceeding.
-
-## References and videos
-
-- [Gymnasium environment API](https://gymnasium.farama.org/api/env/)
-- [Stable-Baselines3 PPO](https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html)
-- [SB3 Monitor](https://stable-baselines3.readthedocs.io/en/master/common/monitor.html)
-- [NumPy savez](https://numpy.org/doc/stable/reference/generated/numpy.savez.html)
-- [Matplotlib quick start](https://matplotlib.org/stable/users/explain/quick_start.html)
-- Video searches: [Python classes and functions](https://www.youtube.com/results?search_query=python+classes+functions+beginner+tutorial), [PPO explained](https://www.youtube.com/results?search_query=PPO+reinforcement+learning+explained+beginner), [Matplotlib bar charts](https://www.youtube.com/results?search_query=matplotlib+bar+chart+beginner+tutorial).
-
-## Self-check
-
-Before moving on, try to explain:
-1. Why does the environment return five values from `step()`?
-2. Why does the observation contain 75 numbers?
-3. What is the difference between `train.py` and `evaluate.py`?
-4. Why do we need `evaluation.npz` before plotting?
-5. Why is a success rate more meaningful than merely checking whether the model file exists?
+Official references: [Gymnasium Env API](https://gymnasium.farama.org/api/env/), [SB3 PPO](https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html), [SB3 Monitor](https://stable-baselines3.readthedocs.io/en/master/common/monitor.html), [NumPy savez](https://numpy.org/doc/stable/reference/generated/numpy.savez.html), [Matplotlib quick start](https://matplotlib.org/stable/users/explain/quick_start.html).
