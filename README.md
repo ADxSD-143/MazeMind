@@ -1,93 +1,117 @@
 # MazeMind 🧩
 
-A small reinforcement-learning project where a PPO agent learns to navigate one fixed 5×5 maze.
+A beginner-friendly Reinforcement Learning project: train a PPO agent to navigate one fixed 5×5 maze, then compare it with random actions.
 
-**Goal:** learn the RL workflow, custom environment design, training, and evaluation—not build a production robot.
+**Project goal:** understand the full ML experiment workflow—not build a production robot or a complicated application.
 
-## What it does
-- Defines a maze with Gymnasium.
-- Trains a PPO agent with Stable-Baselines3.
-- Compares PPO with a random-action baseline.
-- Measures success rate and episode length, then plots results.
+## Start here
 
-**Scope:** one fixed maze, one PPO model, and a small experiment. No web app, paid API, or pretrained model. Results vary; training is not guaranteed to solve the maze.
+**New to the project? Read [the complete project flow](docs/00-project-flow.md) first.** It explains the architecture, flowcharts, maze layout, files, commands, and expected outputs.
 
-## Architecture
+## What happens in this project?
 
-    Maze grid → Gymnasium MazeEnv → PPO training
-              → Evaluate PPO vs random actions
-              → Metrics and Matplotlib plots
+```mermaid
+flowchart TD
+    A[environment.py<br/>Maze and rewards] --> B[train.py<br/>Train PPO]
+    B --> C[Saved PPO model]
+    C --> D[evaluate.py<br/>PPO vs random baseline]
+    D --> E[Saved evaluation numbers]
+    E --> F[visualize.py<br/>Create charts]
+```
+
+- **Gymnasium:** defines the maze environment and action/observation interface.
+- **Stable-Baselines3 PPO:** trains the agent.
+- **NumPy:** represents the grid and calculates metrics.
+- **Matplotlib:** plots the evaluation results.
+
+The project uses no paid APIs, pretrained models, or GPU. Training runs locally. Results vary; training is not guaranteed to solve the maze.
 
 ## Project structure
 
-    MazeMind/
-    ├── README.md
-    ├── requirements.txt
-    ├── environment.py
-    ├── train.py
-    ├── evaluate.py
-    ├── visualize.py
-    └── docs/
-        ├── 01-prerequisites.md
-        ├── 02-installation.md
-        ├── 03-python-basics.md
-        ├── 04-maze-environment.md
-        ├── 05-reinforcement-learning.md
-        ├── 06-training-and-evaluation.md
-        └── 07-resources.md
+```text
+MazeMind/
+├── README.md
+├── requirements.txt
+├── environment.py        # maze, actions, observations and rewards
+├── train.py              # environment check, PPO training and model save
+├── evaluate.py           # evaluate PPO and random baseline
+├── visualize.py          # plots evaluation metrics
+├── outputs/              # generated model, logs, data and chart
+└── docs/
+    ├── 00-project-flow.md
+    ├── 01-prerequisites.md
+    ├── 02-installation.md
+    ├── 03-python-basics.md
+    ├── 04-maze-environment.md
+    ├── 05-reinforcement-learning.md
+    ├── 06-training-and-evaluation.md
+    ├── 07-resources.md
+    └── 08-code-walkthrough.md
+```
 
-## Prerequisites
-- Python 3.10+; use a version supported by current Stable-Baselines3/PyTorch packages.
-- Basic Python: variables, functions, classes, tuples, imports, and NumPy arrays.
-- Internet for initial package installation. Training runs locally.
-- No GPU required.
+## Setup in PyCharm (Windows)
 
-## Quick start
+1. Open the cloned `MazeMind` folder in PyCharm.
+2. Select a Python interpreter supported by the installed Stable-Baselines3/PyTorch versions. Python 3.11 is a sensible starting choice.
+3. Open the PyCharm Terminal at the project root.
+4. Create and activate a virtual environment if needed:
 
-Create a virtual environment:
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-    python -m venv .venv
+If PowerShell blocks activation, use PyCharm's selected project interpreter or Command Prompt activation from [installation guide](docs/02-installation.md).
 
-Windows PowerShell:
+## Run in this order
 
-    .venv\Scripts\Activate.ps1
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+```bash
+# 1. Check the environment API
+python -c "from stable_baselines3.common.env_checker import check_env; from environment import MazeEnv; check_env(MazeEnv()); print('Environment OK')"
 
-macOS/Linux:
+# 2. Train and save PPO
+python train.py
 
-    source .venv/bin/activate
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+# 3. Compare PPO with random actions
+python evaluate.py
 
-Check the environment:
+# 4. Create charts
+python visualize.py
+```
 
-    python -c "from stable_baselines3.common.env_checker import check_env; from environment import MazeEnv; check_env(MazeEnv()); print('Environment OK')"
+Expected output files:
+- `outputs/mazemind_ppo.zip`
+- `outputs/training_monitor.csv`
+- `outputs/evaluation.npz`
+- `outputs/evaluation.png`
 
-Expected output: Environment OK, with no checker exception.
+These are expected paths. The actual training logs and performance metrics vary by run. **A saved model file alone does not prove that the agent learned.**
 
-Train, evaluate, and plot:
+## Learn in order
 
-    python train.py
-    python evaluate.py
-    python visualize.py
+1. [00 — Complete project flow and flowcharts](docs/00-project-flow.md)
+2. [01 — Prerequisites](docs/01-prerequisites.md)
+3. [02 — Installation](docs/02-installation.md)
+4. [03 — Python and NumPy basics](docs/03-python-basics.md)
+5. [04 — Maze environment](docs/04-maze-environment.md)
+6. [05 — Reinforcement Learning and PPO](docs/05-reinforcement-learning.md)
+7. [06 — Training, evaluation and plots](docs/06-training-and-evaluation.md)
+8. [07 — References and videos](docs/07-resources.md)
+9. [08 — Code walkthrough, block by block](docs/08-code-walkthrough.md)
 
-Outputs are saved in outputs/. Do not expect a particular success rate before running the experiment.
+## Keep the scope small
 
-## Read the guides in order
-1. [Prerequisites](docs/01-prerequisites.md)
-2. [Installation](docs/02-installation.md)
-3. [Python concepts used](docs/03-python-basics.md)
-4. [Maze environment](docs/04-maze-environment.md)
-5. [Reinforcement learning and PPO](docs/05-reinforcement-learning.md)
-6. [Training and evaluation](docs/06-training-and-evaluation.md)
-7. [References and videos](docs/07-resources.md)
+One fixed maze, one PPO model, one random baseline, and two charts. No web app, database, cloud deployment, or extra algorithms. Understand and run this version before adding features.
 
 ## Limitations
-- The maze layout is fixed; unseen-maze generalization is not tested.
-- A saved model does not prove that it learned.
+
+- Generalization to unseen mazes is not tested.
 - The random baseline may occasionally reach the goal.
-- Report actual results honestly; this is a learning prototype, not a benchmark.
+- Results must be reported from actual runs, not guessed.
+- This is an educational prototype, not a robotics or RL benchmark.
 
 ## License
+
 Choose a license before accepting outside contributions or reuse.
