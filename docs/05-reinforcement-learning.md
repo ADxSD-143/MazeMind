@@ -19,13 +19,13 @@ MazeMind mein:
 
 ```mermaid
 flowchart TD
-    A[Environment reset] --> B[Observation agent ko milta hai]
-    B --> C[Policy action choose karti hai]
-    C --> D[Environment step(action)]
-    D --> E[Next observation + reward]
-    E --> F{Episode end?}
-    F -- No --> B
-    F -- Yes --> G[Next episode / training update]
+    A["Environment reset"] --> B["Observation agent ko milta hai"]
+    B --> C["Policy action choose karti hai"]
+    C --> D["Environment: step action"]
+    D --> E["Next observation and reward"]
+    E --> F{"Episode end?"}
+    F -- "No" --> B
+    F -- "Yes" --> G["Next episode or training update"]
 ```
 
 Agent ek move choose karta hai; environment us move ke result ko calculate karta hai. PPO training ke dauran collected experience use karke policy parameters update karta hai.
